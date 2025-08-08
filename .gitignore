@@ -1,0 +1,32 @@
+# Build outputs
+dist/
+server/dist/
+webapp/dist/
+*.tar.gz
+
+# Dependencies
+node_modules/
+vendor/
+
+# Go
+go.sum
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
