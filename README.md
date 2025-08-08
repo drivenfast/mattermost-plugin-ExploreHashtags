@@ -24,9 +24,25 @@ A Mattermost plugin that provides enhanced hashtag functionality with grouping a
 ### Viewing Hashtags
 
 1. Click on the hashtag icon in the channel header to open the hashtag sidebar
+
+<img width="1038" height="450" alt="image" src="https://github.com/user-attachments/assets/eb9687d6-7332-42c7-a7d6-fec30687e3fa" />
+
+
 2. Switch between "This Channel" and "Entire Team" views using the tabs
+
+<img width="1038" height="494" alt="image" src="https://github.com/user-attachments/assets/8f0ea7dd-892c-41c3-ae13-ef9504f26f59" />
+
+
 3. Expand/collapse hashtag groups by clicking on the group headers
+
+<img width="1034" height="432" alt="image" src="https://github.com/user-attachments/assets/64354e2c-d12d-459f-afbf-c5e261de4597" />
+
+
 4. Click on any hashtag to view all messages using that tag
+
+<img width="1044" height="458" alt="image" src="https://github.com/user-attachments/assets/3a434259-7182-44a6-92c1-dadff2412a8a" />
+
+
 
 ### Hashtag Grouping
 
