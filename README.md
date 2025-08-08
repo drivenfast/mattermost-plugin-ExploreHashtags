@@ -13,7 +13,7 @@ A Mattermost plugin that provides enhanced hashtag functionality with grouping a
 
 ## Installation
 
-1. Download the latest release from the [releases page](https://github.com/YOUR_USERNAME/mattermost-plugin-aggregatehashtags/releases)
+1. Download the latest release from the [releases page](https://github.com/drivenfast/mattermost-plugin-ExploreHashtags/releases)
 2. Upload the plugin to your Mattermost instance:
    - Go to **System Console > Plugins > Plugin Management**
    - Upload the plugin file
@@ -48,7 +48,7 @@ Hashtags are automatically grouped based on their prefix (text before the hyphen
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/mattermost-plugin-aggregatehashtags.git
+   git clone https://github.com/drivenfast/mattermost-plugin-ExploreHashtags.git
    cd mattermost-plugin-aggregatehashtags
    ```
 
