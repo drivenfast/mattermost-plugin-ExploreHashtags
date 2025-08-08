@@ -5,8 +5,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	
-	"github.com/mattermost/mattermost/server/public/model"
 )
 
 type HashtagGroup struct {
@@ -16,44 +14,137 @@ type HashtagGroup struct {
 
 var tagRe = regexp.MustCompile(`(^|\s)#([a-zA-Z0-9_\-\.]+)`)
 
-func (p *Plugin) getPostsWithHashtag(tag string) ([]HashtagPost, error) {
+func (p *Plugin) getPostsWithHashtag(tag string, channelID string) ([]HashtagPost, error) {
 	var result []HashtagPost
 
-	teams, appErr := p.API.GetTeams()
-	if appErr != nil {
-		return nil, appErr
-	}
-
-	searchParams := []*model.SearchParams{{
-		Terms:      "#" + tag,
-		IsHashtag:  true,
-		InChannels: []string{},
-		FromUsers:  []string{},
-	}}
-
-	// Search in each team the user has access to
-	for _, team := range teams {
-		posts, appErr := p.API.SearchPostsInTeam(team.Id, searchParams)
+	// If channelID is provided, get posts from that channel
+	if channelID != "" {
+		channel, appErr := p.API.GetChannel(channelID)
 		if appErr != nil {
-			continue
+			return nil, fmt.Errorf("failed to get channel: %w", appErr)
 		}
 
-		for _, post := range posts {
-			if user, appErr := p.API.GetUser(post.UserId); appErr == nil {
-				// Skip if the user is a bot
-				if user.IsBot {
+		p.API.LogDebug("Searching for hashtag in channel", 
+			"tag", tag,
+			"channel_id", channelID,
+			"team_id", channel.TeamId,
+			"channel_name", channel.Name)
+
+		page := 0
+		perPage := 200
+
+		for {
+			posts, appErr := p.API.GetPostsForChannel(channelID, page, perPage)
+			if appErr != nil {
+				return nil, fmt.Errorf("failed to get posts: %w", appErr)
+			}
+			if posts == nil || len(posts.Order) == 0 {
+				break
+			}
+
+			p.API.LogDebug("Processing posts from channel", 
+				"page", page,
+				"count", len(posts.Order))
+
+			for _, id := range posts.Order {
+				post := posts.Posts[id]
+				if post == nil || post.Type != "" {
 					continue
 				}
-				
-				// Check if the user has access to the channel where the post is
-				if _, appErr := p.API.GetChannel(post.ChannelId); appErr == nil {
-					result = append(result, HashtagPost{
-						ID:        post.Id,
-						Message:   post.Message,
-						CreateAt:  post.CreateAt,
-						Username:  user.Username,
-						ChannelID: post.ChannelId,
-					})
+
+				// Check if post contains the hashtag
+				matches := tagRe.FindAllStringSubmatch(post.Message, -1)
+				hasTag := false
+				for _, m := range matches {
+					if m[2] == tag {
+						hasTag = true
+						break
+					}
+				}
+
+				if !hasTag {
+					continue
+				}
+
+				// Skip bot posts
+				user, appErr := p.API.GetUser(post.UserId)
+				if appErr != nil || user.IsBot {
+					continue
+				}
+
+				result = append(result, HashtagPost{
+					ID:        post.Id,
+					Message:   post.Message,
+					CreateAt:  post.CreateAt,
+					Username:  user.Username,
+					ChannelID: post.ChannelId,
+				})
+			}
+			page++
+		}
+	} else {
+		// If no channelID provided, search across all teams
+		teams, appErr := p.API.GetTeams()
+		if appErr != nil {
+			return nil, fmt.Errorf("failed to get teams: %w", appErr)
+		}
+
+		for _, team := range teams {
+			channels, appErr := p.API.GetPublicChannelsForTeam(team.Id, 0, 1000)
+			if appErr != nil {
+				p.API.LogError("Failed to get channels for team", "error", appErr.Error(), "team_id", team.Id)
+				continue
+			}
+
+			for _, channel := range channels {
+				page := 0
+				perPage := 200
+
+				for {
+					posts, appErr := p.API.GetPostsForChannel(channel.Id, page, perPage)
+					if appErr != nil {
+						p.API.LogError("Failed to get posts for channel", "error", appErr.Error(), "channel_id", channel.Id)
+						break
+					}
+					if posts == nil || len(posts.Order) == 0 {
+						break
+					}
+
+					for _, id := range posts.Order {
+						post := posts.Posts[id]
+						if post == nil || post.Type != "" {
+							continue
+						}
+
+						// Check if post contains the hashtag
+						matches := tagRe.FindAllStringSubmatch(post.Message, -1)
+						hasTag := false
+						for _, m := range matches {
+							if m[2] == tag {
+								hasTag = true
+								break
+							}
+						}
+
+						if !hasTag {
+							continue
+						}
+
+						// Skip bot posts
+						user, appErr := p.API.GetUser(post.UserId)
+						if appErr != nil || user.IsBot {
+							continue
+						}
+
+						result = append(result, HashtagPost{
+							ID:        post.Id,
+							Message:   post.Message,
+							CreateAt:  post.CreateAt,
+							Username:  user.Username,
+							ChannelID: post.ChannelId,
+						})
+					}
+					page++
 				}
 			}
 		}
@@ -64,6 +155,7 @@ func (p *Plugin) getPostsWithHashtag(tag string) ([]HashtagPost, error) {
 		return result[i].CreateAt > result[j].CreateAt
 	})
 
+	p.API.LogDebug("Returning posts", "count", len(result))
 	return result, nil
 }
 
@@ -118,7 +210,7 @@ func formatHashtagCounts(counts map[string]int) ([]HashtagCount, error) {
 
 func (p *Plugin) computeTeamHashtags(teamID string, max int) ([]HashtagCount, error) {
 	counts := map[string]int{}
-	total := 0
+	totalTags := 0
 
 	p.API.LogDebug("Getting channels for team", "team_id", teamID)
 	channels, appErr := p.API.GetPublicChannelsForTeam(teamID, 0, 1000)
@@ -153,16 +245,21 @@ func (p *Plugin) computeTeamHashtags(teamID string, max int) ([]HashtagCount, er
 					continue
 				}
 
-				for _, m := range tagRe.FindAllStringSubmatch(post.Message, -1) {
+				matches := tagRe.FindAllStringSubmatch(post.Message, -1)
+				for _, m := range matches {
 					tag := m[2]
 					counts[tag]++
+					totalTags++
+					if max > 0 && totalTags >= max {
+						break
+					}
 				}
-				total++
-				if total >= max {
+				
+				if max > 0 && totalTags >= max {
 					break
 				}
 			}
-			if total >= max {
+			if max > 0 && totalTags >= max {
 				break
 			}
 			page++
@@ -174,7 +271,7 @@ func (p *Plugin) computeTeamHashtags(teamID string, max int) ([]HashtagCount, er
 
 func (p *Plugin) computeHashtags(channelID string, max int) ([]HashtagCount, error) {
 	counts := map[string]int{}
-	total := 0
+	totalTags := 0
 
 	page := 0
 	perPage := 200
@@ -192,16 +289,28 @@ func (p *Plugin) computeHashtags(channelID string, max int) ([]HashtagCount, err
 			if post == nil || post.Type != "" {
 				continue
 			}
-			for _, m := range tagRe.FindAllStringSubmatch(post.Message, -1) {
+			
+			// Skip bot posts for consistency with team view
+			user, appErr := p.API.GetUser(post.UserId)
+			if appErr != nil || user.IsBot {
+				continue
+			}
+
+			matches := tagRe.FindAllStringSubmatch(post.Message, -1)
+			for _, m := range matches {
 				tag := m[2]
 				counts[tag]++
+				totalTags++
+				if max > 0 && totalTags >= max {
+					break
+				}
 			}
-			total++
-			if total >= max {
+			
+			if max > 0 && totalTags >= max {
 				break
 			}
 		}
-		if total >= max {
+		if max > 0 && totalTags >= max {
 			break
 		}
 		page++

@@ -26,8 +26,13 @@ export async function fetchHashtags(channelId: string) {
     return resp.json() as Promise<HashtagResponse>;
 }
 
-export async function fetchHashtagPosts(tag: string) {
-    const resp = await fetch(`/plugins/com.ecf.hashtags/api/posts?tag=${tag}`, {
+export async function fetchHashtagPosts(tag: string, channelId?: string) {
+    const url = new URL('/plugins/com.ecf.hashtags/api/posts', window.location.origin);
+    url.searchParams.set('tag', tag);
+    if (channelId) {
+        url.searchParams.set('channel_id', channelId);
+    }
+    const resp = await fetch(url.toString(), {
         method: 'GET',
         headers: {'X-Requested-With': 'XMLHttpRequest'},
         credentials: 'same-origin',

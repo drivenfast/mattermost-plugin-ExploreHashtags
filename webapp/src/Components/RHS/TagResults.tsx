@@ -77,7 +77,7 @@ const styles = {
   }
 };
 
-export default function TagResults({teamId, tag, onBack}: {teamId: string; tag: string; onBack: ()=>void}) {
+export default function TagResults({teamId, tag, onBack, channelId}: {teamId: string; tag: string; onBack: ()=>void; channelId?: string}) {
   const [posts, setPosts] = useState<HashtagPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -87,13 +87,50 @@ export default function TagResults({teamId, tag, onBack}: {teamId: string; tag: 
   const teamName = team ? team.name : '';
 
   useEffect(() => {
+    let mounted = true;
     setLoading(true);
     setError(null);
-    fetchHashtagPosts(tag)
-      .then(setPosts)
-      .catch(e => setError(e.message))
-      .finally(() => setLoading(false));
-  }, [tag]);
+    
+    console.log('TagResults: Fetching posts for tag:', tag, 'channelId:', channelId);
+    
+    fetchHashtagPosts(tag, channelId)
+      .then(response => {
+        console.log('TagResults: Received response:', response);
+        if (!mounted) return;
+
+        if (!response) {
+          console.error('TagResults: Received null response');
+          setError('Failed to fetch posts');
+          setPosts([]);
+          return;
+        }
+
+        if (!Array.isArray(response)) {
+          console.error('TagResults: Received non-array response:', response);
+          setError('Invalid response from server');
+          setPosts([]);
+          return;
+        }
+
+        setPosts(response);
+      })
+      .catch(e => {
+        console.error('TagResults: Error fetching posts:', e);
+        if (mounted) {
+          setError(e.message);
+          setPosts([]);
+        }
+      })
+      .finally(() => {
+        if (mounted) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [tag, channelId]);
 
   function formatDate(timestamp: number) {
     return new Date(timestamp).toLocaleDateString(undefined, {

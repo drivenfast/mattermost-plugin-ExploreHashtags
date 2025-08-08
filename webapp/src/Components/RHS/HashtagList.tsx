@@ -129,7 +129,7 @@ const styles = {
     }
 };
 
-export default function HashtagList({channelId, onSelect}: {channelId: string; onSelect: (t: string)=>void}) {
+export default function HashtagList({channelId, onSelect}: {channelId: string; onSelect: (t: string, channelId?: string)=>void}) {
     const [activeTab, setActiveTab] = useState<Tab>('channel');
     const [data, setData] = useState<HashtagResponse | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -226,7 +226,10 @@ export default function HashtagList({channelId, onSelect}: {channelId: string; o
                                 {group.tags.map(({tag, count}) => (
                                     <div key={tag} style={styles.listItem}>
                                         <button
-                                            onClick={() => onSelect(tag)}
+                                            onClick={() => {
+                                                console.log('HashtagList: Selecting tag', tag, 'activeTab:', activeTab, 'channelId:', channelId);
+                                                onSelect(tag, activeTab === 'channel' ? channelId : undefined);
+                                            }}
                                             style={styles.hashtagButton}
                                         >
                                             <span style={styles.tag}>#{tag}</span>
@@ -246,7 +249,7 @@ export default function HashtagList({channelId, onSelect}: {channelId: string; o
                     .map(({tag, count}) => (
                         <div key={tag} style={styles.listItem}>
                             <button
-                                onClick={() => onSelect(tag)}
+                                onClick={() => onSelect(tag, activeTab === 'channel' ? channelId : undefined)}
                                 style={styles.hashtagButton}
                             >
                                 <span style={styles.tag}>#{tag}</span>

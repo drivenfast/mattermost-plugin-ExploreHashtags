@@ -54,19 +54,41 @@ func (p *Plugin) handleHashtags(w http.ResponseWriter, r *http.Request) {
 }
 
 // GET /api/posts?tag=XXX
-func (p *Plugin) handleHashtagPosts(w http.ResponseWriter, r *http.Request) {
+func (p *Plugin) handleGetTagPosts(c *plugin.Context, w http.ResponseWriter, r *http.Request) {
 	tag := r.URL.Query().Get("tag")
 	if tag == "" {
-		http.Error(w, "tag required", http.StatusBadRequest)
+		http.Error(w, "tag is required", http.StatusBadRequest)
 		return
 	}
 
-	posts, err := p.getPostsWithHashtag(tag)
+	channelID := r.URL.Query().Get("channel_id")
+	p.API.LogDebug("Getting posts for tag", "tag", tag, "channel_id", channelID)
+
+	// Get channel info for logging
+	if channelID != "" {
+		if channel, err := p.API.GetChannel(channelID); err == nil {
+			p.API.LogDebug("Channel info", "name", channel.Name, "team_id", channel.TeamId)
+		} else {
+			p.API.LogError("Failed to get channel info", "error", err.Error())
+		}
+	}
+	
+	posts, err := p.getPostsWithHashtag(tag, channelID)
 	if err != nil {
+		p.API.LogError("Failed to get posts", "error", err.Error(), "tag", tag, "channel_id", channelID)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	_ = json.NewEncoder(w).Encode(posts)
+
+	if posts == nil {
+		p.API.LogDebug("No posts found", "tag", tag, "channel_id", channelID)
+		posts = []HashtagPost{} // Return empty array instead of null
+	} else {
+		p.API.LogDebug("Found posts", "count", len(posts), "tag", tag, "channel_id", channelID)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(posts)
 }
 
 // GET /api/team_hashtags?team_id=XXX&max=1000
@@ -122,7 +144,7 @@ func (p *Plugin) ServeHTTP(c *plugin.Context, w http.ResponseWriter, r *http.Req
 	case "/api/team_hashtags":
 		p.handleTeamHashtags(w, r)
 	case "/api/posts":
-		p.handleHashtagPosts(w, r)
+		p.handleGetTagPosts(c, w, r)
 	default:
 		http.NotFound(w, r)
 	}

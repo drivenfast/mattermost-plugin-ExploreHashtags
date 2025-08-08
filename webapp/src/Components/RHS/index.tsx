@@ -7,6 +7,7 @@ export default function RHS() {
   const channelId = useSelector((s: any) => s.entities.channels.currentChannelId);
   const teamId = useSelector((s: any) => s.entities.teams.currentTeamId);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [selectedChannelId, setSelectedChannelId] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
 
   if (error) {
@@ -27,14 +28,23 @@ export default function RHS() {
     }
 
     if (!selectedTag) {
-      return <HashtagList channelId={channelId} onSelect={setSelectedTag} />;
+      return <HashtagList channelId={channelId} onSelect={(tag, cid) => {
+        console.log('Selected hashtag:', tag, 'with channel:', cid);
+        setSelectedTag(tag);
+        setSelectedChannelId(cid);
+      }} />;
     }
     
+    console.log('Rendering TagResults:', { tag: selectedTag, channelId: selectedChannelId });
     return (
       <TagResults 
         teamId={teamId} 
         tag={selectedTag} 
-        onBack={() => setSelectedTag(null)} 
+        channelId={selectedChannelId}
+        onBack={() => {
+          setSelectedTag(null);
+          setSelectedChannelId(undefined);
+        }} 
       />
     );
   } catch (err) {
