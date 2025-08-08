@@ -21,14 +21,7 @@ const styles = {
         height: '100%',
         overflow: 'hidden' // Prevent double scrollbars
     },
-    header: {
-        fontSize: '16px',
-        fontWeight: 600 as const,
-        padding: '24px 24px 16px',
-        borderBottom: '1px solid rgba(var(--center-channel-color-rgb), 0.08)',
-        color: 'var(--center-channel-color)',
-        flex: '0 0 auto' // Prevent header from shrinking
-    },
+
     tabContainer: {
         display: 'flex',
         padding: '0 24px',
@@ -91,6 +84,36 @@ const styles = {
         color: 'rgba(var(--center-channel-color-rgb), 0.56)',
         fontSize: '12px'
     },
+    sortHeader: {
+        display: 'flex',
+        padding: '8px 16px',
+        borderBottom: '1px solid rgba(var(--center-channel-color-rgb), 0.08)',
+        marginBottom: '8px'
+    },
+    sortButton: {
+        background: 'none',
+        border: 'none',
+        padding: '4px 8px',
+        cursor: 'pointer',
+        fontWeight: 600,
+        fontSize: '13px',
+        color: 'var(--center-channel-color)',
+        display: 'flex',
+        alignItems: 'center',
+        opacity: 0.5,
+        transition: 'all 0.15s ease',
+        '&:hover': {
+            backgroundColor: 'rgba(var(--center-channel-color-rgb), 0.04)',
+            opacity: 0.8
+        }
+    },
+    sortButtonActive: {
+        opacity: 1,
+    },
+    sortIndicator: {
+        marginLeft: '4px',
+        fontSize: '11px'
+    },
     accordion: {
         width: '100%',
         border: 'none'
@@ -135,6 +158,10 @@ export default function HashtagList({channelId, onSelect}: {channelId: string; o
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+    const [sortConfig, setSortConfig] = useState<{sortBy: 'count' | 'name'; sortOrder: 'asc' | 'desc'}>({
+        sortBy: 'count',
+        sortOrder: 'desc'
+    });
     const teamId = useSelector((state: any) => state.entities.teams.currentTeamId);
 
     const toggleGroup = (prefix: string) => {
@@ -146,6 +173,29 @@ export default function HashtagList({channelId, onSelect}: {channelId: string; o
                 next.add(prefix);
             }
             return next;
+        });
+    };
+
+    const handleSort = (newSortBy: 'count' | 'name') => {
+        setSortConfig(prevConfig => ({
+            sortBy: newSortBy,
+            sortOrder: prevConfig.sortBy === newSortBy
+                ? (prevConfig.sortOrder === 'desc' ? 'asc' : 'desc')
+                : 'desc'
+        }));
+    };
+
+    const sortHashtags = (tags: {tag: string; count: number}[]) => {
+        if (!tags || tags.length === 0) return [];
+        
+        return [...tags].sort((a, b) => {
+            if (sortConfig.sortBy === 'count') {
+                return sortConfig.sortOrder === 'desc' ? b.count - a.count : a.count - b.count;
+            }
+            // Sort by name
+            return sortConfig.sortOrder === 'desc'
+                ? b.tag.localeCompare(a.tag)
+                : a.tag.localeCompare(b.tag);
         });
     };
 
@@ -171,7 +221,7 @@ export default function HashtagList({channelId, onSelect}: {channelId: string; o
     if (error) {
         return (
             <div className="sidebar--right__content" style={styles.container}>
-                <div style={styles.header}>Error: {error}</div>
+                <div style={{padding: '16px'}}>Error: {error}</div>
             </div>
         );
     }
@@ -179,16 +229,13 @@ export default function HashtagList({channelId, onSelect}: {channelId: string; o
     if (!data || loading) {
         return (
             <div className="sidebar--right__content" style={styles.container}>
-                <div style={styles.header}>Loading...</div>
+                <div style={{padding: '16px'}}>Loading...</div>
             </div>
         );
     }
 
     return (
         <div className="sidebar--right__content" style={styles.container}>
-            <div style={styles.header}>
-                Explore Hashtags
-            </div>
             <div style={styles.tabContainer}>
                 <button
                     onClick={() => setActiveTab('channel')}
@@ -209,9 +256,41 @@ export default function HashtagList({channelId, onSelect}: {channelId: string; o
                     Entire Team
                 </button>
             </div>
+            <div style={styles.sortHeader}>
+                <button
+                    onClick={() => handleSort('name')}
+                    style={{
+                        ...styles.sortButton,
+                        ...(sortConfig.sortBy === 'name' ? styles.sortButtonActive : {})
+                    }}
+                >
+                    Order Alphabetically
+                    {sortConfig.sortBy === 'name' && (
+                        <span style={styles.sortIndicator}>
+                            {sortConfig.sortOrder === 'desc' ? '▼' : '▲'}
+                        </span>
+                    )}
+                </button>
+                <button
+                    onClick={() => handleSort('count')}
+                    style={{
+                        ...styles.sortButton,
+                        ...(sortConfig.sortBy === 'count' ? styles.sortButtonActive : {})
+                    }}
+                >
+                    Order by Posts
+                    {sortConfig.sortBy === 'count' && (
+                        <span style={styles.sortIndicator}>
+                            {sortConfig.sortOrder === 'desc' ? '▼' : '▲'}
+                        </span>
+                    )}
+                </button>
+            </div>
             <div style={styles.list}>
-                {data.groups.map((group) => (
-                    <div key={group.prefix} style={styles.accordionItem}>
+                {data.groups.map((group) => {
+                    const sortedGroupTags = sortHashtags(group.tags);
+                    return (
+                        <div key={group.prefix} style={styles.accordionItem}>
                         <button
                             onClick={() => toggleGroup(group.prefix)}
                             style={styles.accordionButton}
@@ -223,7 +302,7 @@ export default function HashtagList({channelId, onSelect}: {channelId: string; o
                         </button>
                         {expandedGroups.has(group.prefix) && (
                             <div style={styles.accordionPanel}>
-                                {group.tags.map(({tag, count}) => (
+                                {sortedGroupTags.map(({tag, count}) => (
                                     <div key={tag} style={styles.listItem}>
                                         <button
                                             onClick={() => {
@@ -242,11 +321,12 @@ export default function HashtagList({channelId, onSelect}: {channelId: string; o
                             </div>
                         )}
                     </div>
-                ))}
+                    );
+                })}
                 {/* Show ungrouped tags (those without prefixes) */}
-                {data.hashtags
-                    .filter(tag => !data.groups.some(g => g.tags.some(t => t.tag === tag.tag)))
-                    .map(({tag, count}) => (
+                {sortHashtags(
+                    data.hashtags.filter(tag => !data.groups.some(g => g.tags.some(t => t.tag === tag.tag)))
+                ).map(({tag, count}) => (
                         <div key={tag} style={styles.listItem}>
                             <button
                                 onClick={() => onSelect(tag, activeTab === 'channel' ? channelId : undefined)}
