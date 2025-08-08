@@ -199,17 +199,22 @@ func groupHashtagsByPrefix(tags []HashtagCount) []HashtagGroup {
 	return result
 }
 
-func formatHashtagCounts(counts map[string]int) ([]HashtagCount, error) {
+func formatHashtagCounts(counts map[string]*hashtagInfo) ([]HashtagCount, error) {
 	tags := make([]HashtagCount, 0, len(counts))
-	for t, c := range counts {
-		tags = append(tags, HashtagCount{Tag: t, Count: c})
+	for t, info := range counts {
+		tags = append(tags, HashtagCount{
+			Tag:      t,
+			Count:    info.count,
+			CreateAt: info.createAt,
+			LastUsed: info.lastUsed,
+		})
 	}
 	sort.Slice(tags, func(i, j int) bool { return tags[i].Count > tags[j].Count })
 	return tags, nil
 }
 
 func (p *Plugin) computeTeamHashtags(teamID string, max int) ([]HashtagCount, error) {
-	counts := map[string]int{}
+	counts := map[string]*hashtagInfo{}
 	totalTags := 0
 
 	p.API.LogDebug("Getting channels for team", "team_id", teamID)
@@ -248,7 +253,21 @@ func (p *Plugin) computeTeamHashtags(teamID string, max int) ([]HashtagCount, er
 				matches := tagRe.FindAllStringSubmatch(post.Message, -1)
 				for _, m := range matches {
 					tag := m[2]
-					counts[tag]++
+					if info, exists := counts[tag]; exists {
+						info.count++
+						if post.CreateAt > info.lastUsed {
+							info.lastUsed = post.CreateAt
+						}
+						if post.CreateAt < info.createAt {
+							info.createAt = post.CreateAt
+						}
+					} else {
+						counts[tag] = &hashtagInfo{
+							count:    1,
+							createAt: post.CreateAt,
+							lastUsed: post.CreateAt,
+						}
+					}
 					totalTags++
 					if max > 0 && totalTags >= max {
 						break
@@ -269,8 +288,14 @@ func (p *Plugin) computeTeamHashtags(teamID string, max int) ([]HashtagCount, er
 	return formatHashtagCounts(counts)
 }
 
+type hashtagInfo struct {
+	count    int
+	createAt int64
+	lastUsed int64
+}
+
 func (p *Plugin) computeHashtags(channelID string, max int) ([]HashtagCount, error) {
-	counts := map[string]int{}
+	counts := map[string]*hashtagInfo{}
 	totalTags := 0
 
 	page := 0
@@ -299,7 +324,21 @@ func (p *Plugin) computeHashtags(channelID string, max int) ([]HashtagCount, err
 			matches := tagRe.FindAllStringSubmatch(post.Message, -1)
 			for _, m := range matches {
 				tag := m[2]
-				counts[tag]++
+				if info, exists := counts[tag]; exists {
+					info.count++
+					if post.CreateAt > info.lastUsed {
+						info.lastUsed = post.CreateAt
+					}
+					if post.CreateAt < info.createAt {
+						info.createAt = post.CreateAt
+					}
+				} else {
+					counts[tag] = &hashtagInfo{
+						count:    1,
+						createAt: post.CreateAt,
+						lastUsed: post.CreateAt,
+					}
+				}
 				totalTags++
 				if max > 0 && totalTags >= max {
 					break

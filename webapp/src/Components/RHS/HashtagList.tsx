@@ -4,13 +4,19 @@ import {fetchHashtags, fetchTeamHashtags} from '../../client';
 
 type Tab = 'channel' | 'team';
 
+interface HashtagData {
+    tag: string;
+    count: number;
+    last_used?: number;
+}
+
 interface HashtagGroup {
     prefix: string;
-    tags: {tag: string; count: number}[];
+    tags: HashtagData[];
 }
 
 interface HashtagResponse {
-    hashtags: {tag: string; count: number}[];
+    hashtags: HashtagData[];
     groups: HashtagGroup[];
 }
 
@@ -158,8 +164,8 @@ export default function HashtagList({channelId, onSelect}: {channelId: string; o
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
-    const [sortConfig, setSortConfig] = useState<{sortBy: 'count' | 'name'; sortOrder: 'asc' | 'desc'}>({
-        sortBy: 'count',
+    const [sortConfig, setSortConfig] = useState<{sortBy: 'time' | 'count' | 'name'; sortOrder: 'asc' | 'desc'}>({
+        sortBy: 'time',
         sortOrder: 'desc'
     });
     const teamId = useSelector((state: any) => state.entities.teams.currentTeamId);
@@ -176,7 +182,7 @@ export default function HashtagList({channelId, onSelect}: {channelId: string; o
         });
     };
 
-    const handleSort = (newSortBy: 'count' | 'name') => {
+    const handleSort = (newSortBy: 'time' | 'count' | 'name') => {
         setSortConfig(prevConfig => ({
             sortBy: newSortBy,
             sortOrder: prevConfig.sortBy === newSortBy
@@ -185,17 +191,23 @@ export default function HashtagList({channelId, onSelect}: {channelId: string; o
         }));
     };
 
-    const sortHashtags = (tags: {tag: string; count: number}[]) => {
+    const sortHashtags = (tags: {tag: string; count: number; last_used?: number}[]) => {
         if (!tags || tags.length === 0) return [];
         
         return [...tags].sort((a, b) => {
-            if (sortConfig.sortBy === 'count') {
-                return sortConfig.sortOrder === 'desc' ? b.count - a.count : a.count - b.count;
+            switch (sortConfig.sortBy) {
+                case 'time':
+                    const aTime = a.last_used || 0;
+                    const bTime = b.last_used || 0;
+                    return sortConfig.sortOrder === 'desc' ? bTime - aTime : aTime - bTime;
+                case 'count':
+                    return sortConfig.sortOrder === 'desc' ? b.count - a.count : a.count - b.count;
+                case 'name':
+                default:
+                    return sortConfig.sortOrder === 'desc'
+                        ? b.tag.localeCompare(a.tag)
+                        : a.tag.localeCompare(b.tag);
             }
-            // Sort by name
-            return sortConfig.sortOrder === 'desc'
-                ? b.tag.localeCompare(a.tag)
-                : a.tag.localeCompare(b.tag);
         });
     };
 
@@ -258,14 +270,14 @@ export default function HashtagList({channelId, onSelect}: {channelId: string; o
             </div>
             <div style={styles.sortHeader}>
                 <button
-                    onClick={() => handleSort('name')}
+                    onClick={() => handleSort('time')}
                     style={{
                         ...styles.sortButton,
-                        ...(sortConfig.sortBy === 'name' ? styles.sortButtonActive : {})
+                        ...(sortConfig.sortBy === 'time' ? styles.sortButtonActive : {})
                     }}
                 >
-                    Order Alphabetically
-                    {sortConfig.sortBy === 'name' && (
+                    Recent Activity
+                    {sortConfig.sortBy === 'time' && (
                         <span style={styles.sortIndicator}>
                             {sortConfig.sortOrder === 'desc' ? '▼' : '▲'}
                         </span>
@@ -278,8 +290,22 @@ export default function HashtagList({channelId, onSelect}: {channelId: string; o
                         ...(sortConfig.sortBy === 'count' ? styles.sortButtonActive : {})
                     }}
                 >
-                    Order by Posts
+                    Post Count
                     {sortConfig.sortBy === 'count' && (
+                        <span style={styles.sortIndicator}>
+                            {sortConfig.sortOrder === 'desc' ? '▼' : '▲'}
+                        </span>
+                    )}
+                </button>
+                <button
+                    onClick={() => handleSort('name')}
+                    style={{
+                        ...styles.sortButton,
+                        ...(sortConfig.sortBy === 'name' ? styles.sortButtonActive : {})
+                    }}
+                >
+                    A-Z
+                    {sortConfig.sortBy === 'name' && (
                         <span style={styles.sortIndicator}>
                             {sortConfig.sortOrder === 'desc' ? '▼' : '▲'}
                         </span>

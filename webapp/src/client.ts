@@ -13,7 +13,26 @@ export interface HashtagPost {
     message: string;
     create_at: number;
     username: string;
+    user_id: string;
     channel_id: string;
+    channel_name: string;
+    channel_display_name: string;
+    team_id: string;
+    last_picture_update?: number;
+    root_id: string;
+    original_id: string;
+    props: Record<string, any>;
+    type: string;
+    hashtags: string;
+    pending_post_id: string;
+    reply_count: number;
+    metadata: {
+        embeds?: any[];
+        emojis?: any[];
+        files?: any[];
+        images?: Record<string, any>;
+        reactions?: any[];
+    };
 }
 
 export async function fetchHashtags(channelId: string) {
