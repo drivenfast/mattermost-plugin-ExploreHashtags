@@ -10,8 +10,10 @@ import (
 )
 
 type HashtagCount struct {
-	Tag   string `json:"tag"`
-	Count int    `json:"count"`
+	Tag      string `json:"tag"`
+	Count    int    `json:"count"`
+	CreateAt int64  `json:"createAt"`
+	LastUsed int64  `json:"lastUsed"`
 }
 
 type HashtagPost struct {
