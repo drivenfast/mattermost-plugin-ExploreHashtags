@@ -164,26 +164,22 @@ func groupHashtagsByPrefix(tags []HashtagCount) []HashtagGroup {
 	
 	for _, tag := range tags {
 		parts := strings.Split(tag.Tag, "-")
-		if len(parts) > 1 {
+		// Only group hashtags that contain hyphens (multi-word)
+		if len(parts) > 1 && strings.Contains(tag.Tag, "-") {
 			prefix := parts[0]
 			if _, ok := groups[prefix]; !ok {
 				groups[prefix] = []HashtagCount{}
 			}
 			groups[prefix] = append(groups[prefix], tag)
-		} else {
-			// Handle tags without hyphens by using themselves as the prefix
-			if _, ok := groups[tag.Tag]; !ok {
-				groups[tag.Tag] = []HashtagCount{}
-			}
-			groups[tag.Tag] = append(groups[tag.Tag], tag)
 		}
+		// Skip single-word hashtags - they won't be grouped
 	}
 
 	// Convert map to sorted slice
 	result := make([]HashtagGroup, 0, len(groups))
 	for prefix, tags := range groups {
 		// Only create a group if there are multiple tags with the same prefix
-		if len(tags) > 1 || !strings.Contains(prefix, "-") {
+		if len(tags) > 1 {
 			result = append(result, HashtagGroup{
 				Prefix: prefix,
 				Tags:   tags,

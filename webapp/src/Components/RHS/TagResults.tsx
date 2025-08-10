@@ -37,26 +37,6 @@ const getSearchResult = () => {
     return null;
 };
 
-// Import SearchResult component from Mattermost webapp
-const getSearchResult = () => {
-    // First try to get it from modern webapp structure
-    if ((window as any).Components?.SearchResults?.default?.SearchResult) {
-        return (window as any).Components.SearchResults.default.SearchResult;
-    }
-    
-    // Try legacy structure
-    if ((window as any).Components?.SearchResults?.SearchResult) {
-        return (window as any).Components.SearchResults.SearchResult;
-    }
-    
-    // Try global scope
-    if ((window as any).SearchResult) {
-        return (window as any).SearchResult;
-    }
-    
-    return null;
-};
-
 // Add TypeScript JSX definitions
 declare global {
     namespace JSX {
@@ -81,7 +61,7 @@ const styles = {
     content: {
         flex: '1 1 auto',
         overflow: 'auto',
-        padding: '0 24px 24px', // Match hashtag list padding
+        padding: '0 24px 40px', // Added more bottom padding
     },
     header: {
         display: 'flex',
@@ -193,12 +173,41 @@ export default function TagResults({teamId, tag, onBack, channelId}: {teamId: st
           <h3 style={styles.title}>#{tag}</h3>
         </div>
 
-        {error && <div style={{color: 'var(--error-text)'}}>Error: {error}</div>}
+        {error && (
+          <div style={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            padding: '40px 20px',
+            color: 'var(--error-text)',
+            fontSize: '14px'
+          }}>
+            Error: {error}
+          </div>
+        )}
         
         {loading ? (
-          <div>Loading posts...</div>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            padding: '40px 20px',
+            color: 'rgba(var(--center-channel-color-rgb), 0.72)',
+            fontSize: '14px'
+          }}>
+            Loading posts...
+          </div>
         ) : posts.length === 0 ? (
-          <div>No messages found with #{tag}</div>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            padding: '40px 20px',
+            color: 'rgba(var(--center-channel-color-rgb), 0.72)',
+            fontSize: '14px'
+          }}>
+            No messages found with #{tag}
+          </div>
         ) : (
           <div className="search-items-container" style={styles.postList}>
             {posts.map((post: HashtagPost) => {
