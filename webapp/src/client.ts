@@ -4,8 +4,16 @@ export interface HashtagGroup {
 }
 
 export interface HashtagResponse {
-    hashtags: Array<{tag: string; count: number}>;
+    hashtags: Array<{tag: string; count: number; lastUsed?: number}>;
     groups: HashtagGroup[];
+}
+
+export interface PaginatedHashtagResponse {
+    posts: HashtagPost[];
+    total_count: number;
+    page: number;
+    per_page: number;
+    has_more: boolean;
 }
 
 export interface HashtagPost {
@@ -45,9 +53,11 @@ export async function fetchHashtags(channelId: string) {
     return resp.json() as Promise<HashtagResponse>;
 }
 
-export async function fetchHashtagPosts(tag: string, channelId?: string) {
+export async function fetchHashtagPosts(tag: string, channelId?: string, page = 1, perPage = 20): Promise<PaginatedHashtagResponse> {
     const url = new URL('/plugins/com.ecf.hashtags/api/posts', window.location.origin);
     url.searchParams.set('tag', tag);
+    url.searchParams.set('page', page.toString());
+    url.searchParams.set('per_page', perPage.toString());
     if (channelId) {
         url.searchParams.set('channel_id', channelId);
     }
@@ -57,7 +67,7 @@ export async function fetchHashtagPosts(tag: string, channelId?: string) {
         credentials: 'same-origin',
     });
     if (!resp.ok) throw new Error(await resp.text());
-    return resp.json() as Promise<HashtagPost[]>;
+    return resp.json() as Promise<PaginatedHashtagResponse>;
 }
 
 export async function fetchTeamHashtags(teamId: string) {

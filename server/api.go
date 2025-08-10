@@ -29,6 +29,14 @@ type HashtagResponse struct {
 	Groups   []HashtagGroup `json:"groups"`
 }
 
+type PaginatedHashtagResponse struct {
+	Posts      []HashtagPost `json:"posts"`
+	TotalCount int           `json:"total_count"`
+	Page       int           `json:"page"`
+	PerPage    int           `json:"per_page"`
+	HasMore    bool          `json:"has_more"`
+}
+
 // GET /api/hashtags?channel_id=XXX&limit=200
 func (p *Plugin) handleHashtags(w http.ResponseWriter, r *http.Request) {
 	channelID := r.URL.Query().Get("channel_id")
@@ -55,7 +63,7 @@ func (p *Plugin) handleHashtags(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// GET /api/posts?tag=XXX
+// GET /api/posts?tag=XXX&page=1&per_page=20
 func (p *Plugin) handleGetTagPosts(c *plugin.Context, w http.ResponseWriter, r *http.Request) {
 	tag := r.URL.Query().Get("tag")
 	if tag == "" {
@@ -64,7 +72,26 @@ func (p *Plugin) handleGetTagPosts(c *plugin.Context, w http.ResponseWriter, r *
 	}
 
 	channelID := r.URL.Query().Get("channel_id")
-	p.API.LogDebug("Getting posts for tag", "tag", tag, "channel_id", channelID)
+	
+	// Parse pagination parameters
+	page := r.URL.Query().Get("page")
+	perPage := r.URL.Query().Get("per_page")
+	
+	pageNum := 1
+	if page != "" {
+		if p, err := strconv.Atoi(page); err == nil && p > 0 {
+			pageNum = p
+		}
+	}
+	
+	perPageNum := 20 // default
+	if perPage != "" {
+		if pp, err := strconv.Atoi(perPage); err == nil && pp > 0 && pp <= 100 {
+			perPageNum = pp
+		}
+	}
+
+	p.API.LogDebug("Getting posts for tag", "tag", tag, "channel_id", channelID, "page", pageNum, "per_page", perPageNum)
 
 	// Get channel info for logging
 	if channelID != "" {
@@ -75,22 +102,52 @@ func (p *Plugin) handleGetTagPosts(c *plugin.Context, w http.ResponseWriter, r *
 		}
 	}
 	
-	posts, err := p.getPostsWithHashtag(tag, channelID)
+	// Get all posts first, then paginate
+	// TODO: Optimize this to paginate at database level in the future
+	allPosts, err := p.getPostsWithHashtag(tag, channelID)
 	if err != nil {
 		p.API.LogError("Failed to get posts", "error", err.Error(), "tag", tag, "channel_id", channelID)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	if posts == nil {
-		p.API.LogDebug("No posts found", "tag", tag, "channel_id", channelID)
-		posts = []HashtagPost{} // Return empty array instead of null
-	} else {
-		p.API.LogDebug("Found posts", "count", len(posts), "tag", tag, "channel_id", channelID)
+	if allPosts == nil {
+		allPosts = []HashtagPost{} // Return empty array instead of null
 	}
 
+	totalCount := len(allPosts)
+	startIndex := (pageNum - 1) * perPageNum
+	endIndex := startIndex + perPageNum
+
+	// Ensure we don't exceed array bounds
+	if startIndex >= totalCount {
+		startIndex = totalCount
+	}
+	if endIndex > totalCount {
+		endIndex = totalCount
+	}
+
+	var paginatedPosts []HashtagPost
+	if startIndex < endIndex {
+		paginatedPosts = allPosts[startIndex:endIndex]
+	} else {
+		paginatedPosts = []HashtagPost{}
+	}
+
+	hasMore := endIndex < totalCount
+	
+	response := PaginatedHashtagResponse{
+		Posts:      paginatedPosts,
+		TotalCount: totalCount,
+		Page:       pageNum,
+		PerPage:    perPageNum,
+		HasMore:    hasMore,
+	}
+
+	p.API.LogDebug("Returning paginated posts", "total", totalCount, "page", pageNum, "per_page", perPageNum, "returned", len(paginatedPosts), "has_more", hasMore)
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(posts)
+	json.NewEncoder(w).Encode(response)
 }
 
 // GET /api/team_hashtags?team_id=XXX&max=1000
