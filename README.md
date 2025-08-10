@@ -6,6 +6,7 @@ A Mattermost plugin that provides enhanced hashtag functionality with grouping a
 
 - View hashtags used in the current channel
 - View hashtags across the entire team
+- Switch between list and grouped views
 - Group related hashtags by prefix (e.g., "project-frontend" and "project-backend" are grouped under "project")
 - Filter out bot messages from hashtag counts
 - Sort hashtags by usage count
@@ -44,6 +45,17 @@ A Mattermost plugin that provides enhanced hashtag functionality with grouping a
 
 <img width="481" height="453" alt="image" src="https://github.com/user-attachments/assets/ddad8119-627a-424c-a5c3-a6542bc4abcd" />
 
+
+
+5. Switch between List view and Grouped view
+
+<img width="481" height="453" alt="image" src="https://github.com/user-attachments/assets/9795c7a2-c8f9-4de5-b026-27b4d0139da8" />
+
+
+
+6. Save your sorting and view settings
+
+<img width="481" height="453" alt="image" src="https://github.com/user-attachments/assets/91455db1-5332-4ac9-a7b1-f9253c387abd" />
 
 
 
