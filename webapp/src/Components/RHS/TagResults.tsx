@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
-import { fetchHashtagPosts, HashtagPost } from '../../client';
+import { fetchHashtagPosts, HashtagPost, PaginatedHashtagResponse } from '../../client';
 
 // Add CSS styles for hover effects
 const style = document.createElement('style');
@@ -56,19 +56,27 @@ const styles = {
         display: 'flex',
         flexDirection: 'column' as const,
         height: '100%',
-        overflow: 'hidden' // Prevent double scrollbars
-    },
-    content: {
-        flex: '1 1 auto',
-        overflow: 'auto',
-        padding: '0 24px 40px', // Added more bottom padding
+        overflow: 'hidden' // Container should not scroll
     },
     header: {
         display: 'flex',
         alignItems: 'center',
-        padding: '12px 4px', // Match hashtag list padding
+        padding: '12px 24px',
         borderBottom: '1px solid rgba(var(--center-channel-color-rgb), 0.08)',
-        flex: '0 0 auto' // Prevent header from shrinking
+        flex: '0 0 auto', // Fixed header
+        zIndex: 10
+    },
+    paginationTop: {
+        padding: '12px 24px',
+        borderBottom: '1px solid rgba(var(--center-channel-color-rgb), 0.08)',
+        flex: '0 0 auto', // Fixed pagination
+        zIndex: 9
+    },
+    content: {
+        flex: '1 1 auto',
+        overflow: 'auto', // Only content area scrolls
+        padding: '0 24px 32px', // Bottom padding for breathing room
+        boxSizing: 'border-box' as const
     },
     backButton: {
         background: 'none',
@@ -93,7 +101,7 @@ const styles = {
     },
     postList: {
         padding: '12px 0',
-        margin: 0
+        margin: '0 0 24px 0' // Add bottom margin for extra spacing
     }
 };
 
@@ -101,56 +109,72 @@ export default function TagResults({teamId, tag, onBack, channelId}: {teamId: st
   const [posts, setPosts] = useState<HashtagPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [perPage, setPerPage] = useState(20);
+  const [totalCount, setTotalCount] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
   
   // Get team name from Redux store
   const team = useSelector((state: any) => state.entities.teams.teams[teamId]);
   const teamName = team ? team.name : '';
 
+  const fetchPosts = async (page: number, pageSize: number) => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      console.log('TagResults: Fetching posts for tag:', tag, 'channelId:', channelId, 'page:', page, 'perPage:', pageSize);
+      
+      const response: PaginatedHashtagResponse = await fetchHashtagPosts(tag, channelId, page, pageSize);
+      console.log('TagResults: Received paginated response:', response);
+      
+      if (!response) {
+        console.error('TagResults: Received null response');
+        setError('Failed to fetch posts');
+        setPosts([]);
+        return;
+      }
+
+      if (!Array.isArray(response.posts)) {
+        console.error('TagResults: Received invalid posts array:', response.posts);
+        setError('Invalid response from server');
+        setPosts([]);
+        return;
+      }
+
+      setPosts(response.posts);
+      setTotalCount(response.total_count);
+      setHasMore(response.has_more);
+      setCurrentPage(page);
+    } catch (e) {
+      console.error('TagResults: Error fetching posts:', e);
+      setError(e instanceof Error ? e.message : 'Failed to fetch posts');
+      setPosts([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    let mounted = true;
-    setLoading(true);
-    setError(null);
-    
-    console.log('TagResults: Fetching posts for tag:', tag, 'channelId:', channelId);
-    
-    fetchHashtagPosts(tag, channelId)
-      .then(response => {
-        console.log('TagResults: Received response:', response);
-        if (!mounted) return;
+    fetchPosts(1, perPage);
+  }, [tag, channelId, perPage]);
 
-        if (!response) {
-          console.error('TagResults: Received null response');
-          setError('Failed to fetch posts');
-          setPosts([]);
-          return;
-        }
+  const handleNextPage = () => {
+    if (hasMore) {
+      fetchPosts(currentPage + 1, perPage);
+    }
+  };
 
-        if (!Array.isArray(response)) {
-          console.error('TagResults: Received non-array response:', response);
-          setError('Invalid response from server');
-          setPosts([]);
-          return;
-        }
+  const handlePreviousPage = () => {
+    if (currentPage > 1) {
+      fetchPosts(currentPage - 1, perPage);
+    }
+  };
 
-        setPosts(response);
-      })
-      .catch(e => {
-        console.error('TagResults: Error fetching posts:', e);
-        if (mounted) {
-          setError(e.message);
-          setPosts([]);
-        }
-      })
-      .finally(() => {
-        if (mounted) {
-          setLoading(false);
-        }
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, [tag, channelId]);
+  const handlePerPageChange = (newPerPage: number) => {
+    setPerPage(newPerPage);
+    // fetchPosts will be called automatically by useEffect when perPage changes
+  };
 
   function formatDate(timestamp: number) {
     return new Date(timestamp).toLocaleDateString(undefined, {
@@ -164,15 +188,110 @@ export default function TagResults({teamId, tag, onBack, channelId}: {teamId: st
 
   return (
     <div className="sidebar--right__content" style={styles.container}>
-      <div style={styles.content}>
-        <div style={styles.header}>
-          <button onClick={onBack} style={styles.backButton}>
-            <i className="fa fa-arrow-left" style={{marginRight: '8px'}} />
-            Back
-          </button>
-          <h3 style={styles.title}>#{tag}</h3>
-        </div>
+      {/* Fixed Header */}
+      <div style={styles.header}>
+        <button onClick={onBack} style={styles.backButton}>
+          <i className="fa fa-arrow-left" style={{marginRight: '8px'}} />
+          Back
+        </button>
+        <h3 style={styles.title}>#{tag}</h3>
+      </div>
 
+      {/* Fixed Top Pagination */}
+      {posts.length > 0 && (
+        <div style={styles.paginationTop}>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '8px',
+            fontSize: '12px',
+            color: 'rgba(var(--center-channel-color-rgb), 0.56)'
+          }}>
+            <span>
+              Showing {Math.min((currentPage - 1) * perPage + 1, totalCount)}-{Math.min(currentPage * perPage, totalCount)} of {totalCount} posts
+            </span>
+          </div>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: '16px'
+          }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              <label style={{
+                fontSize: '12px',
+                color: 'rgba(var(--center-channel-color-rgb), 0.56)'
+              }}>Posts per page:</label>
+              <select 
+                value={perPage} 
+                onChange={(e) => handlePerPageChange(Number(e.target.value))}
+                style={{
+                  padding: '4px 8px',
+                  border: '1px solid rgba(var(--center-channel-color-rgb), 0.16)',
+                  borderRadius: '4px',
+                  fontSize: '12px',
+                  background: 'var(--center-channel-bg)',
+                  color: 'var(--center-channel-color)'
+                }}
+              >
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </div>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              <button 
+                onClick={handlePreviousPage} 
+                disabled={currentPage === 1 || loading}
+                style={{
+                  padding: '4px 12px',
+                  background: currentPage === 1 || loading ? 'rgba(var(--center-channel-color-rgb), 0.08)' : 'var(--button-bg)',
+                  color: currentPage === 1 || loading ? 'rgba(var(--center-channel-color-rgb), 0.32)' : 'var(--button-color)',
+                  border: 'none',
+                  borderRadius: '4px',
+                  fontSize: '12px',
+                  cursor: currentPage === 1 || loading ? 'default' : 'pointer'
+                }}
+              >
+                Previous
+              </button>
+              <span style={{
+                padding: '4px 8px',
+                fontSize: '12px',
+                color: 'var(--center-channel-color)',
+                fontWeight: 600
+              }}>{currentPage}</span>
+              <button 
+                onClick={handleNextPage} 
+                disabled={!hasMore || loading}
+                style={{
+                  padding: '4px 12px',
+                  background: !hasMore || loading ? 'rgba(var(--center-channel-color-rgb), 0.08)' : 'var(--button-bg)',
+                  color: !hasMore || loading ? 'rgba(var(--center-channel-color-rgb), 0.32)' : 'var(--button-color)',
+                  border: 'none',
+                  borderRadius: '4px',
+                  fontSize: '12px',
+                  cursor: !hasMore || loading ? 'default' : 'pointer'
+                }}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Scrollable Content Area */}
+      <div style={styles.content}>
         {error && (
           <div style={{
             display: 'flex',
@@ -186,7 +305,7 @@ export default function TagResults({teamId, tag, onBack, channelId}: {teamId: st
           </div>
         )}
         
-        {loading ? (
+        {loading && posts.length === 0 ? (
           <div style={{
             display: 'flex',
             justifyContent: 'center',
@@ -197,7 +316,7 @@ export default function TagResults({teamId, tag, onBack, channelId}: {teamId: st
           }}>
             Loading posts...
           </div>
-        ) : posts.length === 0 ? (
+        ) : posts.length === 0 && !loading ? (
           <div style={{
             display: 'flex',
             justifyContent: 'center',
@@ -207,137 +326,138 @@ export default function TagResults({teamId, tag, onBack, channelId}: {teamId: st
             fontSize: '14px'
           }}>
             No messages found with #{tag}
+            {channelId && " in this channel"}
           </div>
         ) : (
-          <div className="search-items-container" style={styles.postList}>
-            {posts.map((post: HashtagPost) => {
-              const SearchResult = getSearchResult();
-              
-              // If SearchResult component is not available, use fallback
-              if (!SearchResult) {
-                console.error('SearchResult component is not available');
+          <>
+            {loading && (
+              <div style={{
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                padding: '20px',
+                color: 'rgba(var(--center-channel-color-rgb), 0.72)',
+                fontSize: '14px'
+              }}>
+                Loading...
+              </div>
+            )}
+            
+            <div className="search-items-container" style={styles.postList}>
+              {posts.map((post: HashtagPost) => {
+                const SearchResult = getSearchResult();
                 
-                // Get user avatar URL
-                const getProfileImageUrl = (userId: string, profileImage?: string) => {
-                  if (!userId) return '';
-                  const baseUrl = (window as any).basename || '';
-                  const timestamp = profileImage || new Date().getTime();
-                  // Add timestamp to prevent caching issues
-                  return `${baseUrl}/api/v4/users/${userId}/image?_=${timestamp}`;
-                };
+                // If SearchResult component is not available, use fallback
+                if (!SearchResult) {
+                  console.error('SearchResult component is not available');
+                  
+                  // Highlight hashtags in the message, with special highlight for the current tag
+                  const highlightHashtags = (text: string) => {
+                    if (!text) return '';
+                    // First, escape any HTML special characters to prevent XSS
+                    const escapeHtml = (str: string) => {
+                      return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#039;');
+                    };
 
-                // Highlight hashtags in the message, with special highlight for the current tag
-                const highlightHashtags = (text: string) => {
-                  // First, escape any HTML special characters to prevent XSS
-                  const escapeHtml = (str: string) => {
-                    return str
-                      .replace(/&/g, '&amp;')
-                      .replace(/</g, '&lt;')
-                      .replace(/>/g, '&gt;')
-                      .replace(/"/g, '&quot;')
-                      .replace(/'/g, '&#039;');
+                    const escapedText = escapeHtml(text);
+                    
+                    // Create a regex that matches hashtags including hyphens
+                    const hashtagRegex = /#([a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?)/g;
+                    
+                    // Replace hashtags, with special highlighting only for the current tag
+                    return escapedText.replace(hashtagRegex, (match, word) => {
+                      // Only highlight if it's an exact match with the current tag
+                      const isCurrentTag = word.toLowerCase() === tag.toLowerCase();
+                      return isCurrentTag
+                        ? `<span style="color: var(--link-color); font-weight: 600; background-color: rgba(var(--button-bg-rgb), 0.08);">${match}</span>`
+                        : match;
+                    });
                   };
 
-                  const escapedText = escapeHtml(text);
-                  
-                  // Create a regex that matches hashtags including hyphens
-                  const hashtagRegex = /#([a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?)/g;
-                  
-                  // Replace hashtags, with special highlighting only for the current tag
-                  return escapedText.replace(hashtagRegex, (match, word) => {
-                    // Only highlight if it's an exact match with the current tag
-                    const isCurrentTag = word.toLowerCase() === tag.toLowerCase();
-                    return isCurrentTag
-                      ? `<span style="color: var(--link-color); font-weight: 600; background-color: rgba(var(--button-bg-rgb), 0.08);">${match}</span>`
-                      : match;
-                  });
-                };
+                  const goToPost = (e?: React.MouseEvent) => {
+                    if (e) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }
+                    
+                    // Try different methods to navigate to the post
+                    if ((window as any).WebappUtils?.browserHistory?.push) {
+                      (window as any).WebappUtils.browserHistory.push(`/${teamName}/pl/${post.id}`);
+                    } else if ((window as any).WebApp?.browserHistory?.push) {
+                      (window as any).WebApp.browserHistory.push(`/${teamName}/pl/${post.id}`);
+                    } else if ((window as any).PostUtils?.permalinkBrowser) {
+                      (window as any).PostUtils.permalinkBrowser(`/${teamName}/pl/${post.id}`);
+                    } else {
+                      // Fallback to direct URL change
+                      window.location.href = `/${teamName}/pl/${post.id}`;
+                    }
+                  };
 
-                const goToPost = (e?: React.MouseEvent) => {
-                  if (e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                  }
-                  
-                  // Try different methods to navigate to the post
-                  if ((window as any).WebappUtils?.browserHistory?.push) {
-                    (window as any).WebappUtils.browserHistory.push(`/${teamName}/pl/${post.id}`);
-                  } else if ((window as any).WebApp?.browserHistory?.push) {
-                    (window as any).WebApp.browserHistory.push(`/${teamName}/pl/${post.id}`);
-                  } else if ((window as any).PostUtils?.permalinkBrowser) {
-                    (window as any).PostUtils.permalinkBrowser(`/${teamName}/pl/${post.id}`);
-                  } else {
-                    // Fallback to direct URL change
-                    window.location.href = `/${teamName}/pl/${post.id}`;
-                  }
-                };
-
-                return (
-                  <div key={post.id} style={{
-                    padding: '16px',
-                    marginBottom: '12px',
-                    border: '1px solid rgba(var(--center-channel-color-rgb), 0.08)',
-                    borderRadius: '4px',
-                    background: 'var(--center-channel-bg)',
-                    cursor: 'pointer',
-                    transition: 'background 0.2s ease',
-                  }}
-                  className="search-item__container"
-                  onClick={goToPost}>
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      marginBottom: '8px'
-                    }}>
+                  return (
+                    <div key={post.id} style={{
+                      padding: '16px',
+                      marginBottom: '12px',
+                      border: '1px solid rgba(var(--center-channel-color-rgb), 0.08)',
+                      borderRadius: '4px',
+                      background: 'var(--center-channel-bg)',
+                      cursor: 'pointer',
+                      transition: 'background 0.2s ease',
+                    }}
+                    className="search-item__container"
+                    onClick={goToPost}>
                       <div style={{
                         display: 'flex',
-                        flexDirection: 'column',
-                        flex: 1
+                        alignItems: 'center',
+                        marginBottom: '8px'
                       }}>
                         <div style={{
                           display: 'flex',
-                          alignItems: 'flex-start',
-                          gap: '12px'
+                          flexDirection: 'column',
+                          flex: 1
                         }}>
                           <div style={{
-                            flexShrink: 0,
-                            position: 'relative',
-                            width: '32px',
-                            height: '32px'
+                            display: 'flex',
+                            alignItems: 'flex-start',
+                            gap: '12px'
                           }}>
-                            <div
-                              className="Avatar Avatar-md"
-                              style={{
-                                width: '32px',
-                                height: '32px',
-                                borderRadius: '50%',
-                                backgroundColor: 'rgba(var(--center-channel-color-rgb), 0.08)',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                position: 'relative',
-                                overflow: 'hidden'
-                              }}
-                            >
-                              <img
-                                className="Avatar-img"
-                                src={`${(window as any).basename || ''}/api/v4/users/${post.user_id}/image?time=${post.last_picture_update || Date.now()}`}
-                                alt={`${post.username}'s profile picture`}
+                            <div style={{
+                              flexShrink: 0,
+                              position: 'relative',
+                              width: '32px',
+                              height: '32px'
+                            }}>
+                              <div
+                                className="Avatar Avatar-md"
                                 style={{
-                                  width: '100%',
-                                  height: '100%',
-                                  objectFit: 'cover',
-                                  verticalAlign: 'top'
+                                  width: '32px',
+                                  height: '32px',
+                                  borderRadius: '50%',
+                                  backgroundColor: 'rgba(var(--center-channel-color-rgb), 0.08)',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  position: 'relative',
+                                  overflow: 'hidden'
                                 }}
-                                onError={(e) => {
-                                  const target = e.target as HTMLImageElement;
-                                  target.onerror = null;
-
-                                  // Use the default avatar from Mattermost
-                                  if ((window as any).PostUtils?.getDefaultProfileImage) {
-                                    target.src = (window as any).PostUtils.getDefaultProfileImage(post.username);
-                                  } else {
-                                    // Fallback to initials
+                              >
+                                <img
+                                  className="Avatar-img"
+                                  src={`${(window as any).basename || ''}/api/v4/users/${post.user_id}/image?time=${post.last_picture_update || Date.now()}`}
+                                  alt={`${post.username}'s profile picture`}
+                                  style={{
+                                    width: '100%',
+                                    height: '100%',
+                                    objectFit: 'cover',
+                                    verticalAlign: 'top'
+                                  }}
+                                  onError={(e) => {
+                                    const target = e.target as HTMLImageElement;
+                                    target.onerror = null;
                                     target.style.display = 'none';
                                     const parent = target.parentElement;
                                     if (parent) {
@@ -355,106 +475,99 @@ export default function TagResults({teamId, tag, onBack, channelId}: {teamId: st
                                       initials.textContent = (post.username || '?').charAt(0).toUpperCase();
                                       parent.appendChild(initials);
                                     }
-                                  }
-                                }}
-                              />
+                                  }}
+                                />
+                              </div>
+                            </div>
+                            <div style={{
+                              flex: 1,
+                              minWidth: 0
+                            }}>
+                              <strong style={{
+                                  color: 'var(--center-channel-color)',
+                                  fontSize: '14px',
+                                  lineHeight: '20px',
+                                  fontWeight: 600,
+                                  display: 'block',
+                                  marginBottom: '2px'
+                                }}>
+                                  {post.username || 'Unknown User'}
+                                </strong>
+                                <div style={{
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: '2px'
+                                }}>
+                                  <span style={{
+                                    color: 'rgba(var(--center-channel-color-rgb), 0.56)',
+                                    fontSize: '12px',
+                                    lineHeight: '16px'
+                                  }}>
+                                    {formatDate(post.create_at)}
+                                  </span>
+                                  <span style={{
+                                    color: 'rgba(var(--center-channel-color-rgb), 0.56)',
+                                    fontSize: '12px',
+                                    lineHeight: '16px'
+                                  }}>
+                                    {post.channel_display_name}
+                                  </span>
+                                </div>
                             </div>
                           </div>
-                          <div style={{
-                            flex: 1,
-                            minWidth: 0
-                          }}>
-                            <strong style={{
-                                color: 'var(--center-channel-color)',
-                                fontSize: '14px',
-                                lineHeight: '20px',
-                                fontWeight: 600,
-                                display: 'block',
-                                marginBottom: '2px'
-                              }}>
-                                {post.username || 'Unknown User'}
-                              </strong>
-                              <div style={{
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: '2px'
-                              }}>
-                                <span style={{
-                                  color: 'rgba(var(--center-channel-color-rgb), 0.56)',
-                                  fontSize: '12px',
-                                  lineHeight: '16px'
-                                }}>
-                                  {formatDate(post.create_at)}
-                                </span>
-                                <span style={{
-                                  color: 'rgba(var(--center-channel-color-rgb), 0.56)',
-                                  fontSize: '12px',
-                                  lineHeight: '16px'
-                                }}>
-                                  {post.channel_display_name}
-                                </span>
-                              </div>
-                          </div>
                         </div>
-                        <div style={{
-                          color: 'rgba(var(--center-channel-color-rgb), 0.56)',
-                          fontSize: '12px',
-                          marginTop: '2px'
-                        }}>
-                          {post.channel_display_name}
-                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            goToPost();
+                          }}
+                          style={{
+                            padding: '4px 8px',
+                            background: 'rgba(var(--button-bg-rgb), 0.08)',
+                            color: 'var(--button-bg)',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            transition: 'all 0.2s ease',
+                          }}
+                          className="view-post-button"
+                        >
+                          View Post
+                        </button>
                       </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          goToPost();
-                        }}
-                        style={{
-                          padding: '4px 8px',
-                          background: 'rgba(var(--button-bg-rgb), 0.08)',
-                          color: 'var(--button-bg)',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: 'pointer',
-                          fontSize: '12px',
-                          fontWeight: 600,
-                          transition: 'all 0.2s ease',
-                        }}
-                        className="view-post-button"
-                      >
-                        View Post
-                      </button>
-                    </div>
-                    <div style={{
-                      color: 'var(--center-channel-color)',
-                      fontSize: '14px',
-                      lineHeight: '20px',
-                      whiteSpace: 'pre-wrap',
-                      wordBreak: 'break-word'
-                    }}
-                      dangerouslySetInnerHTML={{
-                        __html: highlightHashtags(post.message)
+                      <div style={{
+                        color: 'var(--center-channel-color)',
+                        fontSize: '14px',
+                        lineHeight: '20px',
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-word'
                       }}
-                    />
-                  </div>
-                );
-              }
+                        dangerouslySetInnerHTML={{
+                          __html: highlightHashtags(post.message || '')
+                        }}
+                      />
+                    </div>
+                  );
+                }
 
-              return (
-                <SearchResult
-                  key={post.id}
-                  post={post}
-                  term={tag}
-                  isMentionSearch={false}
-                  isFlaggedPosts={false}
-                  isPinnedPosts={false}
-                  channelName={post.channel_name}
-                  channelDisplayName={post.channel_display_name}
-                  handleSearchTermChange={()=>{}}
-                />
-              );
-            })}
-          </div>
+                return (
+                  <SearchResult
+                    key={post.id}
+                    post={post}
+                    term={tag}
+                    isMentionSearch={false}
+                    isFlaggedPosts={false}
+                    isPinnedPosts={false}
+                    channelName={post.channel_name}
+                    channelDisplayName={post.channel_display_name}
+                    handleSearchTermChange={()=>{}}
+                  />
+                );
+              })}
+            </div>
+          </>
         )}
       </div>
     </div>
